@@ -32,6 +32,454 @@
   <title>Your Luv Code</title>
   <link rel="manifest" href="manifest.json">
 
+  <!-- Stripe Integration - Load directly -->
+  <script src="https://js.stripe.com/v3/"></script>
+  
+  <!-- Stripe JavaScript Functions -->
+  <script>
+    // Initialize Stripe with publishable key
+    window.initializeStripe = function(publishableKey) {
+      try {
+        if (!window.Stripe) {
+          console.error('Stripe library not loaded - check if Stripe.js script is included in index.html');
+          return false;
+        }
+
+        window.stripeWebInstance = Stripe(publishableKey);
+        window.stripeElements = window.stripeWebInstance.elements();
+        
+        console.log('Stripe initialized successfully');
+        return true;
+      } catch (error) {
+        console.error('Failed to initialize Stripe for web:', error);
+        return false;
+      }
+    };
+
+    // Create and mount Stripe card element
+    window.createCardElement = function(elementId) {
+      try {
+        if (!window.stripeElements) {
+          console.error('Stripe Elements not initialized');
+          return false;
+        }
+
+        const domElement = document.getElementById(elementId);
+        if (!domElement) {
+          console.error('DOM element not found:', elementId);
+          return false;
+        }
+
+        // Destroy existing card element if it exists
+        if (window.cardElement) {
+          window.cardElement.destroy();
+        }
+
+        // Create card element with enhanced styling
+        window.cardElement = window.stripeElements.create('card', {
+          style: {
+            base: {
+              fontSize: '16px',
+              color: '#424770',
+              fontFamily: '"Helvetica Neue", Helvetica, sans-serif',
+              fontSmoothing: 'antialiased',
+              '::placeholder': {
+                color: '#aab7c4',
+              },
+            },
+            invalid: {
+              color: '#9e2146',
+            },
+            complete: {
+              color: '#000000',
+            },
+          },
+          hidePostalCode: true,
+        });
+
+        // Mount the element
+        window.cardElement.mount('#' + elementId);
+
+        // Add event listeners
+        window.cardElement.on('change', function(event) {
+          const displayError = document.getElementById(elementId + '-errors');
+          if (event.error) {
+            if (displayError) {
+              displayError.textContent = event.error.message;
+            }
+            if (window.flutterCardValidation) {
+              window.flutterCardValidation(false, event.error.message);
+            }
+          } else {
+            if (displayError) {
+              displayError.textContent = '';
+            }
+            if (window.flutterCardValidation) {
+              window.flutterCardValidation(event.complete, null);
+            }
+          }
+        });
+
+        window.cardElement.on('ready', function() {
+          console.log('Stripe card element ready');
+        });
+
+        window.cardElement.on('focus', function() {
+          console.log('Stripe card element focused');
+        });
+
+        window.cardElement.on('blur', function() {
+          console.log('Stripe card element blurred');
+        });
+
+        // Define iframe display fix function
+        window.fixStripeIframeDisplay = function() {
+          const containerElement = document.getElementById(elementId);
+          if (!containerElement) return false;
+          
+          const stripeFrame = containerElement.querySelector('iframe');
+          if (!stripeFrame) return false;
+          
+          // Apply iframe fixes
+          stripeFrame.style.display = 'block !important';
+          stripeFrame.style.visibility = 'visible !important';
+          stripeFrame.style.opacity = '1 !important';
+          stripeFrame.style.height = '50px !important';
+          stripeFrame.style.minHeight = '50px !important';
+          stripeFrame.style.zIndex = '100 !important';
+          stripeFrame.style.position = 'relative !important';
+          stripeFrame.style.background = 'transparent !important';
+          
+          // Apply container fixes
+          containerElement.style.display = 'flex !important';
+          containerElement.style.alignItems = 'center !important';
+          containerElement.style.minHeight = '60px !important';
+          containerElement.style.height = '60px !important';
+          containerElement.style.zIndex = '25 !important';
+          containerElement.style.position = 'relative !important';
+          
+          // Apply private element fixes
+          const privateElement = containerElement.querySelector('.__PrivateStripeElement');
+          if (privateElement) {
+            privateElement.style.minHeight = '50px !important';
+            privateElement.style.zIndex = '75 !important';
+            privateElement.style.position = 'relative !important';
+          }
+          
+          return true;
+        };
+
+        console.log('Stripe card element created and mounted successfully');
+        return true;
+      } catch (error) {
+        console.error('Error creating Stripe card element:', error);
+        return false;
+      }
+    };
+
+    // Create payment method
+    window.createPaymentMethod = function() {
+      return new Promise((resolve, reject) => {
+        if (!window.stripeWebInstance || !window.cardElement) {
+          reject(new Error('Stripe not properly initialized'));
+          return;
+        }
+
+        window.stripeWebInstance.createPaymentMethod({
+          type: 'card',
+          card: window.cardElement,
+        }).then(function(result) {
+          if (result.error) {
+            reject(result.error);
+          } else {
+            resolve(result.paymentMethod);
+          }
+        }).catch(function(error) {
+          reject(error);
+        });
+      });
+    };
+
+    // Destroy card element cleanup
+    window.destroyCardElement = function() {
+      try {
+        if (window.cardElement) {
+          window.cardElement.destroy();
+          window.cardElement = null;
+        }
+        return true;
+      } catch (error) {
+        console.error('Error destroying card element:', error);
+        return false;
+      }
+    };
+
+    // Test stripe account functionality
+    window.testStripeAccount = function() {
+      return new Promise(async (resolve) => {
+        try {
+          if (!window.stripeWebInstance || !window.cardElement) {
+            resolve({
+              success: false,
+              error: 'Stripe not initialized'
+            });
+            return;
+          }
+
+          const result = await window.stripeWebInstance.createPaymentMethod({
+            type: 'card',
+            card: window.cardElement,
+            billing_details: {
+              name: '',
+              email: ''
+            }
+          });
+
+          if (result.error) {
+            resolve({
+              success: false,
+              error: result.error.message,
+              errorType: result.error.type,
+              errorCode: result.error.code
+            });
+          } else {
+            resolve({
+              success: true,
+              paymentMethod: {
+                id: result.paymentMethod.id,
+                type: result.paymentMethod.type,
+                card: result.paymentMethod.card ? {
+                  brand: result.paymentMethod.card.brand,
+                  last4: result.paymentMethod.card.last4,
+                  exp_month: result.paymentMethod.card.exp_month,
+                  exp_year: result.paymentMethod.card.exp_year
+                } : null
+              }
+            });
+          }
+        } catch (error) {
+          resolve({
+            success: false,
+            error: error.message
+          });
+        }
+      });
+    };
+
+    // Extract card data for cloud function (token-based)
+    window.extractCardDataForCloudFunction = function(billingDetails) {
+      return new Promise(async (resolve) => {
+        try {
+          if (!window.stripeWebInstance || !window.cardElement) {
+            resolve({
+              success: false,
+              error: 'Stripe Elements not initialized'
+            });
+            return;
+          }
+
+          const result = await window.stripeWebInstance.createToken(window.cardElement, {
+            name: billingDetails.name,
+            email: billingDetails.email
+          });
+
+          if (result.error) {
+            resolve({
+              success: false,
+              error: result.error.message
+            });
+          } else {
+            resolve({
+              success: true,
+              token: {
+                id: result.token.id,
+                type: result.token.type,
+                card: result.token.card ? {
+                  brand: result.token.card.brand,
+                  last4: result.token.card.last4,
+                  exp_month: result.token.card.exp_month,
+                  exp_year: result.token.card.exp_year,
+                  country: result.token.card.country
+                } : null
+              }
+            });
+          }
+        } catch (error) {
+          resolve({
+            success: false,
+            error: error.message
+          });
+        }
+      });
+    };
+
+    // Create payment method with elements
+    window.createPaymentMethodWithElements = function(billingDetails) {
+      return new Promise(async (resolve) => {
+        try {
+          if (!window.stripeWebInstance || !window.cardElement) {
+            resolve({
+              success: false,
+              error: 'Stripe Elements not initialized'
+            });
+            return;
+          }
+
+          const result = await window.stripeWebInstance.createPaymentMethod({
+            type: 'card',
+            card: window.cardElement,
+            billing_details: billingDetails
+          });
+
+          if (result.error) {
+            resolve({
+              success: false,
+              error: result.error.message
+            });
+          } else {
+            resolve({
+              success: true,
+              paymentMethod: {
+                id: result.paymentMethod.id,
+                type: result.paymentMethod.type,
+                card: result.paymentMethod.card ? {
+                  brand: result.paymentMethod.card.brand,
+                  last4: result.paymentMethod.card.last4,
+                  exp_month: result.paymentMethod.card.exp_month,
+                  exp_year: result.paymentMethod.card.exp_year
+                } : null
+              }
+            });
+          }
+        } catch (error) {
+          resolve({
+            success: false,
+            error: error.message
+          });
+        }
+      });
+    };
+
+    // Force fix stripe display issues across all elements
+    window.forceFixStripeDisplay = function() {
+      const cardElements = document.querySelectorAll('#stripe-card-element, [id^="stripe-card-element"]');
+      let fixedCount = 0;
+      
+      cardElements.forEach(container => {
+        // Apply container styles
+        container.style.minHeight = '60px';
+        container.style.height = '60px';
+        container.style.display = 'flex';
+        container.style.alignItems = 'center';
+        container.style.zIndex = '25';
+        container.style.position = 'relative';
+        container.style.background = 'transparent';
+        
+        // Fix iframe styles
+        const iframe = container.querySelector('iframe[name^="__privateStripeFrame"]');
+        if (iframe) {
+          iframe.style.height = '50px';
+          iframe.style.minHeight = '50px';
+          iframe.style.display = 'block';
+          iframe.style.visibility = 'visible';
+          iframe.style.opacity = '1';
+          iframe.style.zIndex = '100';
+          iframe.style.position = 'relative';
+          iframe.style.background = 'transparent';
+          fixedCount++;
+        }
+        
+        // Fix private element styles
+        const privateElement = container.querySelector('.__PrivateStripeElement');
+        if (privateElement) {
+          privateElement.style.minHeight = '50px';
+          privateElement.style.zIndex = '75';
+          privateElement.style.position = 'relative';
+        }
+        
+        // Fix stripe element styles
+        const stripeElement = container.querySelector('.StripeElement');
+        if (stripeElement) {
+          stripeElement.style.minHeight = '60px';
+          stripeElement.style.height = '60px';
+          stripeElement.style.zIndex = '50';
+          stripeElement.style.position = 'relative';
+          stripeElement.style.background = 'transparent';
+        }
+      });
+      
+      return fixedCount;
+    };
+
+    // Add alias for the initialize function that Flutter is looking for
+    window.initializeStripeForWeb = window.initializeStripe;
+
+    console.log('Stripe integration functions loaded successfully');
+  </script>
+  
+  <!-- Stripe Element Styles -->
+  <style>
+    #stripe-card-element, [id^="stripe-card-element"] {
+      min-height: 60px !important;
+      height: 60px !important;
+      display: flex !important;
+      align-items: center !important;
+      padding: 16px !important;
+      border: none !important;
+      border-radius: 8px !important;
+      background-color: transparent !important;
+      width: 100% !important;
+      box-sizing: border-box !important;
+      z-index: 25 !important;
+      position: relative !important;
+    }
+    
+    iframe[name^="__privateStripeFrame"] {
+      display: block !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+      min-height: 50px !important;
+      height: 50px !important;
+      width: 100% !important;
+      border: none !important;
+      background: transparent !important;
+      z-index: 100 !important;
+      position: relative !important;
+    }
+    
+    .StripeElement {
+      display: flex !important;
+      align-items: center !important;
+      min-height: 60px !important;
+      height: 60px !important;
+      z-index: 50 !important;
+      position: relative !important;
+      background: transparent !important;
+    }
+    
+    .__PrivateStripeElement {
+      display: block !important;
+      width: 100% !important;
+      height: auto !important;
+      min-height: 50px !important;
+      z-index: 75 !important;
+      position: relative !important;
+    }
+
+    .StripeElement--focus {
+      border-color: #6772e5 !important;
+      box-shadow: 0 0 0 2px rgba(103, 114, 229, 0.2) !important;
+    }
+
+    .StripeElement--invalid {
+      border-color: #e74c3c !important;
+    }
+
+    .StripeElement--webkit-autofill {
+      background-color: #fefde5 !important;
+    }
+  </style>
+
   <!-- Google Analytics -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-F7K5346Q96"></script>
   <script>
